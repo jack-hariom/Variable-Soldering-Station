@@ -1,0 +1,85 @@
+#include "max6675.h"
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+int so = 12;
+int sck = 10;
+int cs = 11;
+
+int oks = 6;
+int incs = 4;
+int decrs = 5;
+int relay = 2;
+
+MAX6675 thermocouple(sck, cs, so);
+
+int temp = 0;
+int set_temp = 0;
+int set_increment = 2;
+
+unsigned long lastButtonTime = 0;
+const int debounceDelay = 200; // 200 ms debounce
+
+unsigned long lastReadTime = 0;
+const unsigned long readInterval = 250; // read MAX6675 every 250 ms
+
+void setup() {
+  Serial.begin(9600);
+  lcd.init();
+  lcd.backlight();
+
+  pinMode(oks, INPUT_PULLUP);
+  pinMode(incs, INPUT_PULLUP);
+  pinMode(decrs, INPUT_PULLUP);
+  pinMode(relay, OUTPUT);
+
+  digitalWrite(relay, HIGH); // Relay OFF initially (assuming active LOW)
+}
+
+void loop() {
+  unsigned long currentMillis = millis();
+
+  // Read temperature only every 250 ms to avoid MAX6675 freezing
+  if (currentMillis - lastReadTime >= readInterval) {
+    temp = thermocouple.readCelsius();
+    lastReadTime = currentMillis;
+  }
+
+  // Debounced set temperature increase
+  if (digitalRead(incs) == HIGH && (currentMillis - lastButtonTime > debounceDelay)) {
+    set_temp += set_increment;
+    lastButtonTime = currentMillis;
+  }
+
+  // Debounced set temperature decrease
+  if (digitalRead(decrs) == HIGH && (currentMillis - lastButtonTime > debounceDelay)) {
+    set_temp -= set_increment;
+    lastButtonTime = currentMillis;
+  }
+
+  // Format temperature strings with sign and padding
+  char temp_str[6];
+  char act_temp_str[6];
+  sprintf(temp_str, "%4d ", set_temp);
+  sprintf(act_temp_str, "%4d ", temp);
+
+  // Display on LCD
+  lcd.setCursor(0, 0);
+  lcd.print("SET TEMP =");
+  lcd.setCursor(10, 0);
+  lcd.print(temp_str);
+
+  lcd.setCursor(0, 1);
+  lcd.print("Temp cel= ");
+  lcd.setCursor(9, 1);
+  lcd.print(act_temp_str);
+
+  // Control relay based on temp
+  if (temp <= set_temp) {
+    digitalWrite(relay, LOW); // Heater ON
+  } else {
+    digitalWrite(relay, HIGH); // Heater OFF
+  }
+}
